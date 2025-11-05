@@ -1,0 +1,15 @@
+# Ignore environment files
+.env
+
+# Go build output
+/bin/
+/dist/
+/build/
+
+# IDE/editor files
+.vscode/
+.idea/
+
+# OS-specific junk
+.DS_Store
+Thumbs.db
