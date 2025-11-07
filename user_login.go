@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 	"github.com/nhatquang342/chirpy/internal/auth"
 )
 
@@ -22,19 +23,42 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "User is not found", http.StatusUnauthorized)
 		return
 	}
-	
+
 	pwMatch, err := auth.CheckPasswordHash(req.Password, dbUser.HashedPassword)
 	if err != nil || !pwMatch {
 		http.Error(w, "Password incorrect", http.StatusUnauthorized)
 		return
-	} else {
-		respondWithJSON(w, http.StatusOK, User{
-			ID: 	   dbUser.ID,
-			CreatedAt: dbUser.CreatedAt,
-			UpdatedAt: dbUser.UpdatedAt,
-			Email: 	   dbUser.Email,
-		})
+	}	
+	
+	accessToken, err := auth.MakeJWT(dbUser.ID, cfg.jwtSecret, time.Hour)
+	if err != nil {
+		http.Error(w, "Failed to generate access token", http.StatusInternalServerError)
+		return
+	}
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		http.Error(w, "Failed to generate refresh token", http.StatusInternalServerError)
+		return
 	}
 
+	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	_, err := cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token: refreshToken,
+		ExpiresAt: expiresAt,
+		UserID: dbUser.ID,
+	})
+	if err != nil {
+		http.Error(w, "Fail to create refresh token", http.StatusInternalServerError)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, User{
+		ID: 	   dbUser.ID,
+		CreatedAt: dbUser.CreatedAt,
+		UpdatedAt: dbUser.UpdatedAt,
+		Email: 	   dbUser.Email,
+		Token:	   accessTokenoken,
+		RefreshToken: refreshToken,
+	})
 	
 }

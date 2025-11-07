@@ -16,6 +16,7 @@ type apiConfig struct {
 	fileserverHits atomic.Int32
 	db             *database.Queries
 	platform	   string
+	jwtSecret		   string
 }
 
 func main() {
@@ -25,6 +26,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	pf := os.Getenv("PLATFORM")
+	jwtSecret := os.Getenv("JWT_SECRET")
 	dbConn, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatal("Failed to connect to database:", err)
@@ -35,6 +37,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		db: 			dbQueries,
 		platform:		pf,
+		jwtSecret:		jwtSecret,
 	}
 
 	// Step 1: Create a new ServeMux

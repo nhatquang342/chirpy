@@ -7,6 +7,7 @@ import (
 	"time"
 	"github.com/google/uuid"
 	"github.com/nhatquang342/chirpy/internal/database"
+	"github.com/nhatquang342/chirpy/internal/auth"
 )
 
 type Chirp struct {
@@ -18,14 +19,19 @@ type Chirp struct {
 }
 
 func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
 	type createChirpParams struct {
 		Body string `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
+	}
+
+	tokenString, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "missing or invalid authorization header", http.StatusUnauthorized)
+		return
+	}
+	userID, err := auth.ValidateJWT(tokenString, cfg.jwtSecret)
+	if err != nil {
+		http.Error(w, "invalid token", http.StatusUnauthorized)
+		return
 	}
 
 	var newChirp createChirpParams
@@ -42,16 +48,20 @@ func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Chirp is too long", http.StatusBadRequest)
 		return
 	}
+	
+	/*
 	_, err := cfg.db.GetUserByID(r.Context(), newChirp.UserID)
 	if err != nil {
 		http.Error(w, "User does not exist", http.StatusBadRequest)
 		return
 	}
+	*/
+
 	cleanedMsg := msgCleaner(newChirp.Body)
 
 	dbChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
 		Body: cleanedMsg,
-		UserID: newChirp.UserID,
+		UserID: userID,
 	})
 	if err != nil {
 		http.Error(w, "System failed to create chirp", http.StatusInternalServerError)
