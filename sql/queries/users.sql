@@ -9,7 +9,7 @@ VALUES (
 )
 RETURNING *;
 
--- name: DeleteAllUsers :exec
+-- name: Reset :exec
 DELETE FROM users;
 
 -- name: GetUserByID :one
@@ -17,3 +17,9 @@ SELECT * FROM users WHERE id = $1;
 
 -- name: GetUserByEmail :one
 SELECT * FROM users WHERE email = $1;
+
+-- name: UpdateUserByID :one
+UPDATE users
+SET email = $2, hashed_password = $3, updated_at = NOW()
+WHERE id = $1
+RETURNING *;

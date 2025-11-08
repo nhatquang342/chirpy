@@ -1,5 +1,5 @@
-# Ignore environment files
 .env
+.txt
 
 # Go build output
 /bin/

@@ -2,93 +2,95 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
-	"github.com/google/uuid"
-	"github.com/nhatquang342/chirpy/internal/database"
+
 	"github.com/nhatquang342/chirpy/internal/auth"
+	"github.com/nhatquang342/chirpy/internal/database"
+	"github.com/google/uuid"
 )
 
 type Chirp struct {
-	ID 		  uuid.UUID `json:"id"`
+	ID        uuid.UUID `json:"id"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
-	Body 	  string 	`json:"body"`
 	UserID    uuid.UUID `json:"user_id"`
+	Body      string    `json:"body"`
 }
 
-func (cfg *apiConfig) handlerCreateChirp(w http.ResponseWriter, r *http.Request) {
-	type createChirpParams struct {
+func (cfg *apiConfig) handlerChirpsCreate(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
 		Body string `json:"body"`
 	}
 
-	tokenString, err := auth.GetBearerToken(r.Header)
+	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		http.Error(w, "missing or invalid authorization header", http.StatusUnauthorized)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't find JWT", err)
 		return
 	}
-	userID, err := auth.ValidateJWT(tokenString, cfg.jwtSecret)
+	userID, err := auth.ValidateJWT(token, cfg.jwtSecret)
 	if err != nil {
-		http.Error(w, "invalid token", http.StatusUnauthorized)
+		respondWithError(w, http.StatusUnauthorized, "Couldn't validate JWT", err)
 		return
 	}
 
-	var newChirp createChirpParams
-	if err := json.NewDecoder(r.Body).Decode(&newChirp); err != nil {
-		http.Error(w, "Invalid JSON", http.StatusBadRequest)
-		return
-	}
-	if newChirp.Body == "" {
-		http.Error(w, "Chirp cannot be empty", http.StatusBadRequest)
-		return
-	}
-	const maxChirpLength = 140
-	if len(newChirp.Body) > maxChirpLength {
-		http.Error(w, "Chirp is too long", http.StatusBadRequest)
-		return
-	}
-	
-	/*
-	_, err := cfg.db.GetUserByID(r.Context(), newChirp.UserID)
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
 	if err != nil {
-		http.Error(w, "User does not exist", http.StatusBadRequest)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't decode parameters", err)
 		return
 	}
-	*/
 
-	cleanedMsg := msgCleaner(newChirp.Body)
+	cleaned, err := validateChirp(params.Body)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
 
-	dbChirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
-		Body: cleanedMsg,
+	chirp, err := cfg.db.CreateChirp(r.Context(), database.CreateChirpParams{
+		Body:   cleaned,
 		UserID: userID,
 	})
 	if err != nil {
-		http.Error(w, "System failed to create chirp", http.StatusInternalServerError)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp", err)
 		return
 	}
 
 	respondWithJSON(w, http.StatusCreated, Chirp{
-		ID: 	   dbChirp.ID,
-		CreatedAt: dbChirp.CreatedAt,
-		UpdatedAt: dbChirp.UpdatedAt,
-		Body: 	   dbChirp.Body,
-		UserID:    dbChirp.UserID,
+		ID:        chirp.ID,
+		CreatedAt: chirp.CreatedAt,
+		UpdatedAt: chirp.UpdatedAt,
+		Body:      chirp.Body,
+		UserID:    chirp.UserID,
 	})
 }
 
-func msgCleaner(rawText string) string {
-	badWords := []string{"kerfuffle", "sharbert", "fornax"}
-	words := strings.Split(rawText, " ")
-	for i, w := range words {
-		lower := strings.ToLower(w)
-		for _, bad := range badWords {
-			if lower == bad {
-				words[i] = "****"
-				break
-			}
-		}
+func validateChirp(body string) (string, error) {
+	const maxChirpLength = 140
+	if len(body) > maxChirpLength {
+		return "", errors.New("Chirp is too long")
 	}
 
-	return strings.Join(words, " ")
+	badWords := map[string]struct{}{
+		"kerfuffle": {},
+		"sharbert":  {},
+		"fornax":    {},
+	}
+	cleaned := getCleanedBody(body, badWords)
+	return cleaned, nil
+}
+
+func getCleanedBody(body string, badWords map[string]struct{}) string {
+	words := strings.Split(body, " ")
+	for i, word := range words {
+		loweredWord := strings.ToLower(word)
+		if _, ok := badWords[loweredWord]; ok {
+			words[i] = "****"
+		}
+	}
+	cleaned := strings.Join(words, " ")
+	return cleaned
 }
