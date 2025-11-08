@@ -1,3 +1,0 @@
-1. explain MakeRefreshToken()
-2. dbToken, err := cfg.db.GetUserFromRefreshToken => what's this?
-3. if dbToken.RevokedAt.Valid {}
