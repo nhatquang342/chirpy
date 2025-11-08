@@ -1,5 +1,5 @@
 .env
-.txt
+follow_up_questions.txt
 
 # Go build output
 /bin/
