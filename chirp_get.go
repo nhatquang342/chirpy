@@ -2,8 +2,9 @@ package main
 
 import (
 	"net/http"
-
+	"sort"
 	"github.com/google/uuid"
+	"github.com/nhatquang342/chirpy/internal/database"
 )
 
 func (cfg *apiConfig) handlerChirpsGet(w http.ResponseWriter, r *http.Request) {
@@ -30,10 +31,30 @@ func (cfg *apiConfig) handlerChirpsGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) handlerChirpsRetrieve(w http.ResponseWriter, r *http.Request) {
-	dbChirps, err := cfg.db.GetChirps(r.Context())
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps", err)
-		return
+	authorIDStr := r.URL.Query().Get("author_id")
+
+	var (
+		dbChirps []database.Chirp
+		err error
+	)
+
+	if authorIDStr == "" {
+		dbChirps, err = cfg.db.GetChirps(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps", err)
+			return
+		}
+	} else {
+		authorID, convErr := uuid.Parse(authorIDStr)
+		if convErr != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid author_id", err)
+			return
+		}
+		dbChirps, err = cfg.db.GetChirpsOneAuthor(r.Context(), authorID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't retrieve chirps", err)
+			return
+		}
 	}
 
 	chirps := []Chirp{}
@@ -46,6 +67,22 @@ func (cfg *apiConfig) handlerChirpsRetrieve(w http.ResponseWriter, r *http.Reque
 			Body:      dbChirp.Body,
 		})
 	}
+
+	sortOption := r.URL.Query().Get("sort")
+	sort.Slice(chirps, func(i, j int) bool {
+		if sortOption == "desc" {
+			return chirps[i].CreatedAt.After(chirps[j].CreatedAt)
+		}
+		return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)
+	})
+	
+	/*
+	if sortOption == "asc" || sortOption == "" {
+		sort.Slice(chirps, func(i, j int) bool {return chirps[i].CreatedAt.Before(chirps[j].CreatedAt)})
+	} else if sortOption == "desc" {
+		sort.Slice(chirps, func(i, j int) bool {return chirps[i].CreatedAt.After(chirps[j].CreatedAt)})
+	}
+	*/
 
 	respondWithJSON(w, http.StatusOK, chirps)
 }
